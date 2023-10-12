@@ -24,6 +24,7 @@
 #include "../interface/Combine.h"
 #include "../interface/Significance.h"
 #include "../interface/CascadeMinimizer.h"
+#include "../interface/CascadeFitter.h"
 #include "../interface/CloseCoutSentry.h"
 #include "../interface/utils.h"
 #include "../interface/ToyMCSamplerOpt.h"
@@ -123,6 +124,7 @@ bool FitterAlgoBase::run(RooWorkspace *w, RooStats::ModelConfig *mc_s, RooStats:
   //Significance::MinimizerSentry minimizerConfig(minimizerAlgo_, minimizerTolerance_);
   CloseCoutSentry sentry(verbose < 0);
 
+  std::cout << "FitterAlgoBase run\n";
   static bool setParams = runtimedef::get("SETPARAMETERS_AFTER_NLL");
   if (setParams && allParameters_.getSize() == 0) {
       allParameters_.add(w->allVars());
@@ -133,6 +135,7 @@ bool FitterAlgoBase::run(RooWorkspace *w, RooStats::ModelConfig *mc_s, RooStats:
   if (shouldCreateNLLBranch) { Combine::addBranch("nll", &nllValue_, "nll/D"); Combine::addBranch("nll0", &nll0Value_, "nll0/D"); shouldCreateNLLBranch = false; }
 
   if (profileMode_ != ProfileAll && parametersToFreeze_.getSize() == 0) {
+    std::cout << "prfileMode is not all!\n";
       switch (profileMode_) {
           case ProfileUnconstrained:
               if (verbose > 1) fprintf(sentry.trueStdOut(), "Will not profile the constrained nuisance parameters.\n");
@@ -215,16 +218,20 @@ RooFitResult *FitterAlgoBase::doFit(RooAbsPdf &pdf, RooAbsData &data, RooRealVar
 }
 
 RooFitResult *FitterAlgoBase::doFit(RooAbsPdf &pdf, RooAbsData &data, const RooArgList &rs, const RooCmdArg &constrain, bool doHesse, int ndim, bool reuseNLL, bool saveFitResult) {
+  std::cout << "enter FitterAlgoBase::doFit\n";
     RooFitResult *ret = 0;
     if (reuseNLL && nll.get() != 0 && !forceRecreateNLL_) {
+      std::cout << "reuse NLL\n";
         ((cacheutils::CachingSimNLL&)(*nll)).setData(data); // reuse nll but swap out the data
     } else {
         nll.reset(); // first delete the old one, to avoid using more memory, even if temporarily
+        std::cout << "recreate NLL\n";
         nll.reset(pdf.createNLL(data, constrain, RooFit::Extended(pdf.canBeExtended()), RooFit::Offset(true))); // make a new nll
     }
    
     double nll0 = nll->getVal();
     if (runtimedef::get("SETPARAMETERS_AFTER_NLL")) {
+      std::cout << "set parameters after nll activated\n";
         utils::setModelParameters(setPhysicsModelParameterExpression_, allParameters_);
         if (verbose >= 3) {
             double nll_new = nll->getVal();
@@ -233,7 +240,10 @@ RooFitResult *FitterAlgoBase::doFit(RooAbsPdf &pdf, RooAbsData &data, const RooA
     }
     double delta68 = 0.5*ROOT::Math::chisquared_quantile_c(1-0.68,ndim);
     double delta95 = 0.5*ROOT::Math::chisquared_quantile_c(1-0.95,ndim);
-    CascadeMinimizer minim(*nll, CascadeMinimizer::Unconstrained, rs.getSize() ? dynamic_cast<RooRealVar*>(rs.first()) : 0);
+    std::cout << "start to define CascadeMinimizer\n";
+    CascadeFitter minim(*nll, CascadeFitter::Unconstrained, rs.getSize() ? dynamic_cast<RooRealVar*>(rs.first()) : 0);
+    // CascadeMinimizer minim(*nll, CascadeMinimizer::Unconstrained, rs.getSize() ? dynamic_cast<RooRealVar*>(rs.first()) : 0);
+    std::cout << "finish CascadeMinimizer definition\n";
     //minim.setStrategy(minimizerStrategy_);
     minim.setErrorLevel(delta68);
     if (!autoBoundsPOIs_.empty()) minim.setAutoBounds(&autoBoundsPOISet_); 
@@ -676,7 +686,9 @@ double FitterAlgoBase::findCrossingNew(CascadeMinimizer &minim, RooAbsReal &nll,
 }
 
 void FitterAlgoBase::optimizeBounds(const RooWorkspace *w, const RooStats::ModelConfig *mc) {
+  std::cout << "enter optimize bounds\n";
     if (runtimedef::get("UNBOUND_GAUSSIANS") && mc->GetNuisanceParameters() != 0) {
+      std::cout << "unbound_gaussians\n";
         RooLinkedListIter iter = mc->GetNuisanceParameters()->iterator();
         for (RooAbsArg *a = (RooAbsArg *) iter.Next(); a != 0; a = (RooAbsArg *) iter.Next()) {
             RooRealVar *rrv = dynamic_cast<RooRealVar *>(a);
@@ -690,6 +702,7 @@ void FitterAlgoBase::optimizeBounds(const RooWorkspace *w, const RooStats::Model
         } 
     }
     if (runtimedef::get("OPTIMIZE_BOUNDS") && mc->GetNuisanceParameters() != 0) {
+      std::cout << "optimize bounds\n";
         RooLinkedListIter iter = mc->GetNuisanceParameters()->iterator();
         for (RooAbsArg *a = (RooAbsArg *) iter.Next(); a != 0; a = (RooAbsArg *) iter.Next()) {
             RooRealVar *rrv = dynamic_cast<RooRealVar *>(a);

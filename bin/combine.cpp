@@ -24,6 +24,7 @@
 #include "../interface/ChannelCompatibilityCheck.h"
 #include "../interface/MultiDimFit.h"
 #include "../interface/CascadeMinimizer.h"
+#include "../interface/CascadeFitter.h"
 #include "../interface/ProfilingTools.h"
 #include "../interface/GenerateOnly.h"
 #include "../interface/Logger.h"

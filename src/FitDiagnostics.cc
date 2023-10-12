@@ -146,6 +146,7 @@ void FitDiagnostics::applyOptions(const boost::program_options::variables_map &v
 
 bool FitDiagnostics::runSpecific(RooWorkspace *w, RooStats::ModelConfig *mc_s, RooStats::ModelConfig *mc_b, RooAbsData &data, double &limit, double &limitErr, const double *hint) {
 
+  std::cout << "FitDiagnostics runSpecific\n";
   if (reuseParams_ && minos_!="none"){
 	std::cout << "Cannot reuse b-only fit params when running minos. Parameters will be reset when running S+B fit"<<std::endl;
 	reuseParams_=false;

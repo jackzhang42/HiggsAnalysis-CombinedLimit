@@ -60,6 +60,7 @@
 #include "../interface/ToyMCSamplerOpt.h"
 #include "../interface/AsimovUtils.h"
 #include "../interface/CascadeMinimizer.h"
+#include "../interface/CascadeFitter.h"
 #include "../interface/ProfilingTools.h"
 #include "../interface/RooMultiPdf.h"
 #include "../interface/CMSHistFunc.h"
@@ -218,10 +219,12 @@ void Combine::applyOptions(const boost::program_options::variables_map &vm) {
 bool Combine::mklimit(RooWorkspace *w, RooStats::ModelConfig *mc_s, RooStats::ModelConfig *mc_b, RooAbsData &data, double &limit, double &limitErr) {
   TStopwatch timer;
 
+  std::cout << "enter mklimit\n";
   bool ret = false;
   try {
     double hint = 0, hintErr = 0; bool hashint = false;
     if (hintAlgo) {
+      std::cout << "we have hintAlgo\n";
         if (hintUsesStatOnly_ ) { //&& withSystematics) {
             //withSystematics = false;
             hashint = hintAlgo->run(w, mc_s, mc_b, data, hint, hintErr, 0);
@@ -232,6 +235,7 @@ bool Combine::mklimit(RooWorkspace *w, RooStats::ModelConfig *mc_s, RooStats::Mo
 	w->loadSnapshot("clean");
     }
     limitErr = 0; // start with 0, as some algorithms don't compute it
+    std::cout << "do algo run\n";
     ret = algo->run(w, mc_s, mc_b, data, limit, limitErr, (hashint ? &hint : 0));    
   } catch (std::exception &ex) {
     std::cerr << "Caught exception " << ex.what() << std::endl;
@@ -915,6 +919,7 @@ void Combine::run(TString hlfFile, const std::string &dataset, double &limit, do
   }
   
   if (nToys <= 0) { // observed or asimov
+    std::cout << "nToys <= 0\n";
     if (makeToyGenSnapshot_) w->saveSnapshot("toyGenSnapshot",utils::returnAllVars(w));
     iToy = nToys;
     if (iToy == -1) {
@@ -978,6 +983,7 @@ void Combine::run(TString hlfFile, const std::string &dataset, double &limit, do
       std::cerr << "No observed data '" << dataset << "' in the workspace. Cannot compute limit.\n" << std::endl;
       return;
     }
+    std::cout << "can we still see this? \n";
     if (saveToys_) {
 	writeToysHere->WriteTObject(dobs, "toy_asimov");
         if (toysFrequentist_ && mc->GetGlobalObservables()) { 
@@ -985,19 +991,25 @@ void Combine::run(TString hlfFile, const std::string &dataset, double &limit, do
             if (snap) writeToysHere->WriteTObject(snap, "toy_asimov_snapshot");
         }
     }
+    std::cout << "line 990 marker \n";
     //std::cout << "Computing" <<  (iToy==0 ? " observed " :" expected ")<<" results starting from " << ((toysFrequentist_ && !bypassFrequentistFit_) ? " post-fit " : " pre-fit ") << " (nuisance) parameters " << std::endl;
     //if (verbose) Logger::instance().log(std::string(Form("Combine.cc: %d -- Computing %s results starting from %s parameters",__LINE__, (iToy==0 ? " observed " :" expected "), ( (toysFrequentist_ && !bypassFrequentistFit_) ? "post-fit" : "pre-fit") )),Logger::kLogLevelInfo,__func__);
     if (MH) MH->setVal(mass_);    
+    std::cout << "line 994 marker \n";
     if (verbose > (isExtended ? 3 : 2)) utils::printRAD(dobs);
+    std::cout << "line 996 marker \n";
     if (mklimit(w,mc,mc_bonly,*dobs,limit,limitErr)) commitPoint(0,g_quantileExpected_); //tree->Fill();
+    std::cout << "line 998 marker \n";
 
      // Set the global flag to write output to the tree again since some Methods overwrite this to avoid the fill above. 
      toggleGlobalFillTree(true);
+     std::cout << "now end the nToy <= 0 loop\n";
   }
   
   std::vector<double> limitHistory;
   std::unique_ptr<RooAbsPdf> nuisancePdf;
   if (nToys > 0) {
+    std::cout << "we are here: nToys > 0\n";
     if (genPdf == 0) throw std::invalid_argument("You can't generate background-only toys if you have no background-only pdf in the workspace and you have set --noMCbonly");
     toymcoptutils::SimPdfGenInfo newToyMC(*genPdf, *observables, !unbinned_, NULL, 0, toysFrequentist_); 
     double expLimit = 0;
@@ -1206,9 +1218,13 @@ void Combine::addFloatingParameters(const RooArgSet &parameters){
 void Combine::addDiscreteNuisances(RooWorkspace *w){
 
     RooArgSet *discreteParameters = (RooArgSet*) w->genobj("discreteParams");
- 
-    CascadeMinimizerGlobalConfigs::O().pdfCategories = RooArgList();
-    CascadeMinimizerGlobalConfigs::O().allRooMultiPdfParams = RooArgList();
+/*   
+ *     CascadeMinimizerGlobalConfigs::O().pdfCategories = RooArgList();
+ *     CascadeMinimizerGlobalConfigs::O().allRooMultiPdfParams = RooArgList();
+ *  */
+
+    CascadeFitterGlobalConfigs::O().pdfCategories = RooArgList();
+    CascadeFitterGlobalConfigs::O().allRooMultiPdfParams = RooArgList();
 
     if (discreteParameters != 0) {
         TIterator *dp = discreteParameters->createIterator();
@@ -1219,7 +1235,8 @@ void Combine::addDiscreteNuisances(RooWorkspace *w){
               std::cout << "Adding discrete " << cat->GetName() << "\n";
       	      if (verbose) Logger::instance().log(std::string(Form("Combine.cc: %d -- Adding discrete %s ",__LINE__,cat->GetName())),Logger::kLogLevelInfo,__func__);
 	    }
-            (CascadeMinimizerGlobalConfigs::O().pdfCategories).add(*arg);
+            (CascadeFitterGlobalConfigs::O().pdfCategories).add(*arg);
+            // (CascadeMinimizerGlobalConfigs::O().pdfCategories).add(*arg);
           }
         }
     } 
@@ -1235,24 +1252,28 @@ void Combine::addDiscreteNuisances(RooWorkspace *w){
               std::cout << "Adding discrete " << cat->GetName() << "\n";
       	      if (verbose) Logger::instance().log(std::string(Form("Combine.cc: %d -- Adding discrete %s ",__LINE__,cat->GetName())),Logger::kLogLevelInfo,__func__);
 	    }
-            (CascadeMinimizerGlobalConfigs::O().pdfCategories).add(*arg);
+            (CascadeFitterGlobalConfigs::O().pdfCategories).add(*arg);
+            // (CascadeMinimizerGlobalConfigs::O().pdfCategories).add(*arg);
          }
 	}
     }
     // Now lets go through the list of parameters which are associated to this discrete nuisance
     RooArgSet clients;
-    utils::getClients(CascadeMinimizerGlobalConfigs::O().pdfCategories,(w->allPdfs()),clients);
+    utils::getClients(CascadeFitterGlobalConfigs::O().pdfCategories,(w->allPdfs()),clients);
+    // utils::getClients(CascadeMinimizerGlobalConfigs::O().pdfCategories,(w->allPdfs()),clients);
     TIterator *it = clients.createIterator();
     // clients.Print();
     while (RooAbsArg *arg = (RooAbsArg*)it->Next()) {
-      (CascadeMinimizerGlobalConfigs::O().allRooMultiPdfs).add(*(dynamic_cast<RooMultiPdf*>(arg)));
+      (CascadeFitterGlobalConfigs::O().allRooMultiPdfs).add(*(dynamic_cast<RooMultiPdf*>(arg)));
+      // (CascadeMinimizerGlobalConfigs::O().allRooMultiPdfs).add(*(dynamic_cast<RooMultiPdf*>(arg)));
       RooAbsPdf *pdf = dynamic_cast<RooAbsPdf*>(arg);
       RooArgSet *pdfPars = pdf->getParameters((const RooArgSet*)0);
       std::unique_ptr<TIterator> iter_v(pdfPars->createIterator());
       for (RooAbsArg *a = (RooAbsArg *) iter_v->Next(); a != 0; a = (RooAbsArg *) iter_v->Next()) {
 	RooRealVar *v = dynamic_cast<RooRealVar *>(a);
 	if (!v) continue;
-	if (! (v->isConstant())) (CascadeMinimizerGlobalConfigs::O().allRooMultiPdfParams).add(*v) ;
+	if (! (v->isConstant())) (CascadeFitterGlobalConfigs::O().allRooMultiPdfParams).add(*v) ;
+	// if (! (v->isConstant())) (CascadeMinimizerGlobalConfigs::O().allRooMultiPdfParams).add(*v) ;
       }
     }
 }
